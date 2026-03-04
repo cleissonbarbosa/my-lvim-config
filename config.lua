@@ -1,8 +1,4 @@
 -- Read the docs: https://www.lunarvim.org/docs/configuration
--- Example configs: https://github.com/LunarVim/starter.lvim
--- Video Tutorials: https://www.youtube.com/watch?v=sFA9kX-Ud_c&list=PLhoH5vyxr6QqGu0i7tt_XoVK9v-KvZ3m6
--- Forum: https://www.reddit.com/r/lunarvim/
--- Discord: https://discord.com/invite/Xb9B4Ny
 
 -- ============================================================================
 -- GENERAL SETTINGS
@@ -12,20 +8,20 @@
 lvim.colorscheme = "tokyonight-night"
 
 -- Vim options
-vim.opt.relativenumber = true      -- Relative line numbers
-vim.opt.wrap = false               -- Disable line wrapping
-vim.opt.scrolloff = 8              -- Keep 8 lines visible above/below cursor
-vim.opt.sidescrolloff = 8          -- Keep 8 columns visible horizontally
-vim.opt.shiftwidth = 2             -- Indentation width
-vim.opt.tabstop = 2                -- Tab width
-vim.opt.expandtab = true           -- Convert tabs to spaces
-vim.opt.timeoutlen = 300           -- Key sequence timeout (ms)
+vim.opt.relativenumber = true     -- Relative line numbers
+vim.opt.wrap = false              -- Disable line wrapping
+vim.opt.scrolloff = 8             -- Keep 8 lines visible above/below cursor
+vim.opt.sidescrolloff = 8         -- Keep 8 columns visible horizontally
+vim.opt.shiftwidth = 2            -- Indentation width
+vim.opt.tabstop = 2               -- Tab width
+vim.opt.expandtab = true          -- Convert tabs to spaces
+vim.opt.timeoutlen = 300          -- Key sequence timeout (ms)
 vim.opt.clipboard = "unnamedplus" -- Use system clipboard
-vim.opt.cursorline = true          -- Highlight current line
-vim.opt.termguicolors = true       -- Enable true colors
-vim.opt.ignorecase = true          -- Case-insensitive search
-vim.opt.smartcase = true           -- Case-sensitive when uppercase is used
-vim.opt.undofile = true            -- Persistent undo history
+vim.opt.cursorline = true         -- Highlight current line
+vim.opt.termguicolors = true      -- Enable true colors
+vim.opt.ignorecase = true         -- Case-insensitive search
+vim.opt.smartcase = true          -- Case-sensitive when uppercase is used
+vim.opt.undofile = true           -- Persistent undo history
 
 -- Format on save
 lvim.format_on_save.enabled = true
@@ -35,11 +31,12 @@ lvim.format_on_save.pattern = {
   "*.html", "*.css", "*.json",
 }
 
--- Set Node path for Neovim/LunarVim (auto-detected via nvm)
-local node_path = vim.fn.trim(vim.fn.system("which node"))
-if node_path ~= "" then
-  vim.g.node_host_prog = node_path
-end
+-- Detect Node path (used by Copilot): prefer nvm stable, fallback to system node
+local node_path = vim.fn.trim(vim.fn.system(
+  "bash -lc 'export NVM_DIR=\"$HOME/.nvm\"; "
+    .. "[ -s \"$NVM_DIR/nvm.sh\" ] && . \"$NVM_DIR/nvm.sh\"; "
+    .. "nvm which stable 2>/dev/null || command -v node'"
+))
 
 -- ============================================================================
 -- KEYMAPS
@@ -53,6 +50,10 @@ lvim.keys.visual_mode["<C-Up>"] = ":m '<-2<CR>gv=gv"
 lvim.keys.normal_mode["<C-Down>"] = ":m .+1<CR>=="
 lvim.keys.normal_mode["<C-Up>"] = ":m .-2<CR>=="
 
+-- Multi-cursor: add cursor above/below with Ctrl+Shift+Arrow
+vim.keymap.set("n", "<C-S-Down>", "<Plug>(VM-Add-Cursor-Down)", { silent = true, remap = true })
+vim.keymap.set("n", "<C-S-Up>", "<Plug>(VM-Add-Cursor-Up)", { silent = true, remap = true })
+
 -- Save with Ctrl+S
 lvim.keys.normal_mode["<C-s>"] = ":w<CR>"
 lvim.keys.insert_mode["<C-s>"] = "<Esc>:w<CR>a"
@@ -64,6 +65,22 @@ lvim.keys.visual_mode[">"] = ">gv"
 -- Navigate between buffers with Shift+H and Shift+L
 lvim.keys.normal_mode["<S-h>"] = ":BufferLineCyclePrev<CR>"
 lvim.keys.normal_mode["<S-l>"] = ":BufferLineCycleNext<CR>"
+
+-- Which-Key: disable operator presets to avoid conflicts with nvim-surround and comment.nvim
+lvim.builtin.which_key.setup.plugins = {
+  marks = true,
+  registers = true,
+  spelling = { enabled = true, suggestions = 20 },
+  presets = {
+    operators = false, -- avoid conflict with 'y' (nvim-surround) and 'g' (comment)
+    motions = false,
+    text_objects = false,
+    windows = true,
+    nav = true,
+    z = true,
+    g = false,  -- avoid conflict with comment.nvim 'gc'/'gb'
+  },
+}
 
 -- Which-Key: extra leader shortcuts
 lvim.builtin.which_key.mappings["t"] = {
@@ -91,6 +108,9 @@ lvim.builtin.which_key.mappings["C"] = {
 -- ============================================================================
 
 -- Treesitter: guaranteed languages
+local ts_install = require("nvim-treesitter.install")
+ts_install.prefer_git = true
+
 lvim.builtin.treesitter.ensure_installed = {
   "lua",
   "python",
@@ -104,6 +124,7 @@ lvim.builtin.treesitter.ensure_installed = {
   "regex",
   "dockerfile",
   "gitignore",
+  "diff",
 }
 lvim.builtin.treesitter.highlight.enable = true
 lvim.builtin.treesitter.indent.enable = true
@@ -121,24 +142,35 @@ lvim.builtin.terminal.direction = "float"
 -- ============================================================================
 
 -- LSP servers to auto-install/configure
-vim.list_extend(lvim.lsp.automatic_configuration.skipped_servers, { "tsserver" })
+vim.list_extend(lvim.lsp.automatic_configuration.skipped_servers, { "tsserver", "pyright", "basedpyright" })
 
 local lsp_manager = require("lvim.lsp.manager")
 
--- TypeScript/JavaScript (via typescript-language-server)
-lsp_manager.setup("ts_ls")
+-- TypeScript/JavaScript (compat: ts_ls newer / tsserver older)
+local ts_server = "tsserver"
+if pcall(require, "lspconfig.configs") and require("lspconfig.configs").ts_ls then
+  ts_server = "ts_ls"
+end
+lsp_manager.setup(ts_server)
 
--- Python (pyright)
-lsp_manager.setup("pyright", {
-  settings = {
-    python = {
-      analysis = {
-        typeCheckingMode = "basic",
-        autoImportCompletions = true,
+-- Python (manual setup to avoid Mason registry issues)
+local lspconfig = require("lspconfig")
+local python_lsp = lspconfig.pyright and "pyright" or (lspconfig.basedpyright and "basedpyright" or nil)
+if python_lsp then
+  lspconfig[python_lsp].setup({
+    on_attach = require("lvim.lsp").common_on_attach,
+    on_init = require("lvim.lsp").common_on_init,
+    capabilities = require("lvim.lsp").common_capabilities(),
+    settings = {
+      python = {
+        analysis = {
+          typeCheckingMode = "basic",
+          autoImportCompletions = true,
+        },
       },
     },
-  },
-})
+  })
+end
 
 -- Go (gopls)
 lsp_manager.setup("gopls", {
@@ -192,20 +224,26 @@ lsp_manager.setup("jsonls")
 
 local formatters = require("lvim.lsp.null-ls.formatters")
 formatters.setup({
-  { name = "stylua" },                                                     -- Lua
-  { name = "black" },                                                      -- Python
-  { name = "isort",  args = { "--profile", "black" } },                    -- Python imports
-  { name = "goimports" },                                                  -- Go
-  { name = "prettierd", filetypes = { "typescript", "typescriptreact",     -- Web
-    "javascript", "javascriptreact", "html", "css", "json", "yaml", "markdown" } },
+  { name = "stylua" },                                                 -- Lua
+  { name = "black" },                                                  -- Python
+  { name = "isort",    args = { "--profile", "black" } },              -- Python imports
+  { name = "goimports" },                                              -- Go
+  {
+    name = "prettierd",
+    filetypes = { "typescript", "typescriptreact",                     -- Web
+      "javascript", "javascriptreact", "html", "css", "json", "yaml", "markdown" }
+  },
 })
 
 local linters = require("lvim.lsp.null-ls.linters")
 linters.setup({
-  { name = "eslint_d", filetypes = { "typescript", "typescriptreact",      -- Web
-    "javascript", "javascriptreact" } },
-  { name = "flake8",   args = { "--max-line-length", "120" } },            -- Python
-  { name = "golangci_lint" },                                              -- Go
+  {
+    name = "eslint_d",
+    filetypes = { "typescript", "typescriptreact",                    -- Web
+      "javascript", "javascriptreact" }
+  },
+  { name = "flake8",       args = { "--max-line-length", "120" } },   -- Python
+  { name = "golangci_lint" },                                         -- Go
 })
 
 -- ============================================================================
@@ -231,13 +269,36 @@ lvim.plugins = {
   -- Multi-cursor
   { "mg979/vim-visual-multi" },
 
+  -- Auto-install Mason tools (formatters/linters used by null-ls)
+  {
+    "WhoIsSethDaniel/mason-tool-installer.nvim",
+    config = function()
+      require("mason-tool-installer").setup({
+        ensure_installed = {
+          "stylua",         -- Lua
+          "black",          -- Python formatter
+          "isort",          -- Python import sorter
+          "flake8",         -- Python linter
+          "goimports",      -- Go
+          "golangci-lint",  -- Go linter
+          "prettierd",      -- Web (JS/TS/HTML/CSS/JSON/YAML/MD)
+          "eslint_d",       -- JS/TS linter
+        },
+        auto_update = false,
+        run_on_start = true,
+      })
+    end,
+  },
+
   -- Markdown rendering in the editor
   {
     "MeanderingProgrammer/render-markdown.nvim",
     dependencies = { "nvim-treesitter/nvim-treesitter", "nvim-mini/mini.nvim" },
     ---@module 'render-markdown'
     ---@type render.md.UserConfig
-    opts = {},
+    opts = {
+      latex = { enabled = false }, -- disable latex (avoids parser/utftex missing warnings)
+    },
   },
 
   -- GitHub Copilot
@@ -247,6 +308,7 @@ lvim.plugins = {
     event = "InsertEnter",
     config = function()
       require("copilot").setup({
+        copilot_node_command = node_path ~= "" and node_path or "node",
         suggestion = { enabled = false },
         panel = { enabled = false },
       })
@@ -256,6 +318,7 @@ lvim.plugins = {
   -- Copilot as nvim-cmp source
   {
     "zbirenbaum/copilot-cmp",
+    dependencies = { "zbirenbaum/copilot.lua" },
     config = function()
       require("copilot_cmp").setup()
     end,
@@ -269,7 +332,6 @@ lvim.plugins = {
       { "zbirenbaum/copilot.lua" },
       { "nvim-lua/plenary.nvim" },
     },
-    build = "make tiktoken",
     config = function()
       require("CopilotChat").setup({
         show_help = "yes",
@@ -277,6 +339,8 @@ lvim.plugins = {
         answer_header = "   Copilot ",
         error_header = "  Erro ",
         highlight_selection = true,
+        -- Telescope integration for vim.ui.select (removes default picker warning)
+        selection = require("CopilotChat.select").visual,
         window = {
           layout = "vertical",
           width = 0.4,
@@ -284,6 +348,13 @@ lvim.plugins = {
           side = "right",
           border = "none",
         },
+      })
+      -- Use telescope as picker for /CopilotChat
+      vim.api.nvim_create_autocmd("BufEnter", {
+        pattern = "copilot-*",
+        callback = function()
+          vim.opt_local.relativenumber = false
+        end,
       })
     end,
   },
