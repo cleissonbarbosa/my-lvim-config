@@ -218,6 +218,15 @@ lsp_manager.setup("jsonls")
 -- Tailwind CSS (uncomment if you use it)
 -- lsp_manager.setup("tailwindcss")
 
+-- none-ls compatibility with newer Neovim LSP internals
+if vim.lsp
+  and vim.lsp._request_name_to_capability == nil
+  and vim.lsp.protocol
+  and vim.lsp.protocol._request_name_to_server_capability
+then
+  vim.lsp._request_name_to_capability = vim.lsp.protocol._request_name_to_server_capability
+end
+
 -- ============================================================================
 -- FORMATTERS & LINTERS (via none-ls)
 -- ============================================================================
