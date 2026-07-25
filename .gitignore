@@ -1,0 +1,11 @@
+# LunarVim writes these into the config directory at runtime
+lvim.log
+.luarc.json.bak
+
+# Editor / OS noise
+*.swp
+*.swo
+.DS_Store
+
+# Local overrides that should not be shared between machines
+lua/user/local.lua
